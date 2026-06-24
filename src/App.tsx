@@ -22,6 +22,14 @@ function getOrgProjects(): ApiProject[] {
   try { return JSON.parse(raw)?.projects ?? [] } catch { return [] }
 }
 
+// connect 결과(orgData)는 클라이언트 캐시라 새 기기·캐시 삭제·로그아웃 시 사라진다.
+// 토큰만 있고 org 연결이 없으면 앱 본화면 대신 /connect 로 보내 연결 로직을 다시 태운다.
+function hasOrgConnection(): boolean {
+  const raw = localStorage.getItem('orgData')
+  if (!raw) return false
+  try { return Array.isArray(JSON.parse(raw)?.projects) } catch { return false }
+}
+
 function MainApp() {
   const [tab, setTab] = useState<TabKey>('schedule')
   const navigate = useNavigate()
@@ -92,13 +100,18 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return token ? <>{children}</> : <Navigate to="/login" replace />
 }
 
+// 토큰은 있지만 org 연결이 없으면 /connect 로 — 연결 후 다시 들어오면 통과.
+function RequireOrg({ children }: { children: React.ReactNode }) {
+  return hasOrgConnection() ? <>{children}</> : <Navigate to="/connect" replace />
+}
+
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/callback" element={<CallbackPage />} />
       <Route path="/connect" element={<PrivateRoute><ConnectPage /></PrivateRoute>} />
-      <Route path="/*" element={<PrivateRoute><MainApp /></PrivateRoute>} />
+      <Route path="/*" element={<PrivateRoute><RequireOrg><MainApp /></RequireOrg></PrivateRoute>} />
     </Routes>
   )
 }
