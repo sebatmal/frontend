@@ -1,19 +1,23 @@
 import { useState } from 'react'
 import { api } from '../mock/api'
 import { useStore, type SplitResult } from '../store'
-import type { Task } from '../types'
+import type { Task, Lane } from '../types'
 import type { AISuggest, Importance } from '../mock/data'
 import { retro } from '../mock/data'
 import { SC } from './GraphPage'
 
 const WEEKS = ['1주차', '2주차', '3주차', '4주차', '5주차']
+const LANES: { key: Lane; label: string }[] = [
+  { key: 'FE', label: 'FE · 프론트' }, { key: 'BE', label: 'BE · 백엔드' }, { key: 'AI', label: 'AI' }, { key: 'INFRA', label: 'INFRA · 인프라' },
+]
 const IMP: Record<Importance, { label: string; cls: string }> = {
   high: { label: 'high', cls: 'b-blocked' }, medium: { label: 'medium', cls: 'b-review' }, low: { label: 'low', cls: 'b-planned' },
 }
 type EditIssue = { id: string; title: string; importance: Importance; days: number; depIds: string[]; assignee: string }
+type NewFeat = { title: string; week: number; lane: Lane; depIds: string[] }
 
 export default function SchedulePage() {
-  const { tasks, members, moveTask, splitFeature, childrenOf } = useStore()
+  const { tasks, members, moveTask, addFeature, splitFeature, childrenOf } = useStore()
   const mm = Object.fromEntries(members.map((m) => [m.id, m]))
   const [drag, setDrag] = useState<string | null>(null)
   const [openFor, setOpenFor] = useState<Task | null>(null)
@@ -24,6 +28,7 @@ export default function SchedulePage() {
   const [toast, setToast] = useState('')
   const [confirmed, setConfirmed] = useState(1)   // 이 주차 미만은 확정·잠김. 그 외엔 자유 이동
   const [summary, setSummary] = useState<SplitResult | null>(null)
+  const [addFeat, setAddFeat] = useState<NewFeat | null>(null)   // 기능 추가 모달
 
   const byId = Object.fromEntries(tasks.map((t) => [t.id, t]))
   const dependentsOf = (id: string) => tasks.filter((x) => x.deps.includes(id))
@@ -51,7 +56,15 @@ export default function SchedulePage() {
   }
   const open = (t: Task) => {
     setOpenFor(t); setSug(null); setItems([]); setNewTitle('')
-    api.suggestIssues(t.id).then((s) => { setSug(s); setItems(s.issues.map((is, i) => ({ id: `s${i}`, title: is.title, importance: is.importance, days: is.days, depIds: (is.deps || []).map((d) => `s${d}`), assignee: '' }))) })
+    api.suggestIssues(t.id, { title: t.title, lane: t.lane }).then((s) => { setSug(s); setItems(s.issues.map((is, i) => ({ id: `s${i}`, title: is.title, importance: is.importance, days: is.days, depIds: (is.deps || []).map((d) => `s${d}`), assignee: '' }))) })
+  }
+  // 기능 추가 → 바로 이슈 추천 모달로 연결
+  const featureList = tasks.filter((t) => !t.id.includes('-i'))
+  const createFeature = () => {
+    if (!addFeat || !addFeat.title.trim()) { flash('기능 이름을 입력해 주세요'); return }
+    const t = addFeature(addFeat)
+    setAddFeat(null)
+    open(t)
   }
   const delItem = (id: string) => setItems((its) => its.filter((x) => x.id !== id).map((x) => ({ ...x, depIds: x.depIds.filter((d) => d !== id) })))
   const addItem = () => { if (!newTitle.trim()) return; setItems((its) => [...its, { id: `n${its.length}-${newTitle.length}`, title: newTitle.trim(), importance: 'medium', days: 1, depIds: [], assignee: '' }]); setNewTitle('') }
@@ -81,7 +94,7 @@ export default function SchedulePage() {
     <div>
       <div className="page-head" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div><h1 className="t-title1">스케줄 관리</h1><p>확정한 주차는 잠기고, 그 외엔 자유롭게 이동 — 옮길 수 있는 주차가 초록으로 표시돼요 · 기능을 누르면 이슈로 나눕니다</p></div>
-        <button onClick={() => flash('기능 추가')} style={btnP}>＋ 기능 추가</button>
+        <button onClick={() => setAddFeat({ title: '', week: confirmed, lane: 'FE', depIds: [] })} style={btnP}>＋ 기능 추가</button>
       </div>
 
       {dragT && (
@@ -143,6 +156,76 @@ export default function SchedulePage() {
       </div>
 
       {toast && <div style={toastS}>{toast}</div>}
+
+      {/* 기능 추가 → 이슈 추천 (현재~미래 주차 배치 · 의존성은 시간 순방향) */}
+      {addFeat && (
+        <div style={overlay} onClick={() => setAddFeat(null)}>
+          <div style={{ ...modal, maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+              <span className="t-title3">기능 추가</span>
+              <span style={{ marginLeft: 'auto', cursor: 'pointer', color: 'var(--gray-400)' }} onClick={() => setAddFeat(null)}>✕</span>
+            </div>
+            <div className="t-caption" style={{ marginBottom: 12 }}>현재 주차부터 미래 주차에 기능을 올리고, 분류에 맞춰 이슈를 추천받아요. 선행은 같거나 이전 주차 기능만 — 시간 순서대로 흐릅니다.</div>
+
+            {/* 로드맵 미리보기 — 현재~미래 어디에 올라가는지 */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
+              {WEEKS.map((w, i) => i >= confirmed && (
+                <div key={w} onClick={() => setAddFeat({ ...addFeat, week: i, depIds: addFeat.depIds.filter((d) => { const f = featureList.find((t) => t.id === d); return f && f.week <= i }) })}
+                  style={{ minWidth: 98, flex: '1 0 98px', background: i === addFeat.week ? 'var(--primary-light)' : 'var(--gray-50)', border: i === addFeat.week ? '1px solid var(--primary)' : '1px solid transparent', borderRadius: 12, padding: 8, cursor: 'pointer' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: i === confirmed ? 'var(--info)' : 'var(--gray-500)', marginBottom: 6 }}>{w}{i === confirmed ? ' · 현재' : ''}</div>
+                  {featureList.filter((t) => t.week === i).map((t) => (
+                    <div key={t.id} style={{ fontSize: 11, color: 'var(--gray-600)', background: 'var(--surface)', border: '1px solid var(--gray-100)', borderRadius: 6, padding: '3px 6px', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.title}</div>
+                  ))}
+                  {i === addFeat.week && <div style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, padding: '3px 6px', border: '1px dashed var(--primary)', borderRadius: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>＋ {addFeat.title.trim() || '새 기능'}</div>}
+                </div>
+              ))}
+            </div>
+
+            <label style={lbl}>기능 이름</label>
+            <input autoFocus value={addFeat.title} onChange={(e) => setAddFeat({ ...addFeat, title: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && createFeature()}
+              placeholder="예: 결제 시스템, 상품 검색" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--gray-300)', borderRadius: 10, padding: '10px 12px', fontFamily: 'inherit', fontSize: 14, marginBottom: 14 }} />
+
+            <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+              <div style={{ flex: 1 }}>
+                <label style={lbl}>주차</label>
+                <select value={addFeat.week} onChange={(e) => { const w = Number(e.target.value); setAddFeat({ ...addFeat, week: w, depIds: addFeat.depIds.filter((d) => { const f = featureList.find((t) => t.id === d); return f && f.week <= w }) }) }} style={selS}>
+                  {WEEKS.map((w, i) => <option key={w} value={i} disabled={i < confirmed}>{w}{i < confirmed ? ' (확정됨)' : i === confirmed ? ' · 현재' : ''}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={lbl}>분류</label>
+                <select value={addFeat.lane} onChange={(e) => setAddFeat({ ...addFeat, lane: e.target.value as Lane })} style={selS}>
+                  {LANES.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <label style={lbl}>선행 기능 <span style={{ fontWeight: 400, color: 'var(--gray-400)' }}>· 선택 · 같거나 이전 주차만</span></label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+              {addFeat.depIds.map((d) => {
+                const f = featureList.find((t) => t.id === d)
+                return f && (
+                  <span key={d} style={{ fontSize: 12, color: '#B45309', background: 'var(--warning-light)', padding: '3px 6px 3px 9px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    🔗 {f.title} <span style={{ opacity: 0.7 }}>· {WEEKS[f.week]}</span> 이후 <span onClick={() => setAddFeat({ ...addFeat, depIds: addFeat.depIds.filter((x) => x !== d) })} style={{ cursor: 'pointer', opacity: 0.7 }}>✕</span>
+                  </span>
+                )
+              })}
+              {(() => {
+                const cands = featureList.filter((t) => t.week <= addFeat.week && !addFeat.depIds.includes(t.id))
+                return cands.length > 0 ? (
+                  <select value="" onChange={(e) => { if (e.target.value) setAddFeat({ ...addFeat, depIds: [...addFeat.depIds, e.target.value] }); e.currentTarget.value = '' }}
+                    style={{ fontFamily: 'inherit', fontSize: 12, border: '1px dashed var(--gray-300)', borderRadius: 8, padding: '5px 8px', color: 'var(--gray-500)' }}>
+                    <option value="">+ 선행 기능</option>
+                    {cands.map((t) => <option key={t.id} value={t.id}>{t.title} · {WEEKS[t.week]}</option>)}
+                  </select>
+                ) : <span className="t-caption">같거나 이전 주차에 올린 기능이 선행 후보로 떠요</span>
+              })()}
+            </div>
+
+            <button onClick={createFeature} style={{ ...btnP, width: '100%', justifyContent: 'center', marginTop: 20 }}>추가하고 이슈 추천 받기 →</button>
+          </div>
+        </div>
+      )}
 
       {/* 이슈로 나누기 (이슈는 미할당 → 각자 가져가기) */}
       {openFor && (
@@ -263,3 +346,5 @@ const btnG: React.CSSProperties = { border: '1px solid var(--gray-200)', backgro
 const overlay: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(25,31,40,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 20 }
 const modal: React.CSSProperties = { background: 'var(--surface)', width: '100%', maxWidth: 470, borderRadius: 20, padding: 20, maxHeight: '90vh', overflow: 'auto' }
 const toastS: React.CSSProperties = { position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', background: 'rgba(25,31,40,.92)', color: '#fff', padding: '11px 16px', borderRadius: 12, fontSize: 14, zIndex: 60 }
+const lbl: React.CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--gray-700)', marginBottom: 6 }
+const selS: React.CSSProperties = { width: '100%', boxSizing: 'border-box', height: 40, border: '1px solid var(--gray-300)', borderRadius: 10, padding: '0 10px', fontFamily: 'inherit', fontSize: 14, background: '#fff', cursor: 'pointer' }

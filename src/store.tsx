@@ -1,11 +1,12 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
-import type { Task, Member, PullRequest } from './types'
+import type { Task, Member, PullRequest, Lane } from './types'
 import { tasks as seedTasks, members as seedMembers, prs as seedPrs, ME } from './mock/data'
 
 // 중앙 상태(목 서버). 새로고침 전까지 유지 · 모든 화면이 동기화됨.
 export type SplitItem = { id: string; title: string; assignee: string; depIds: string[] }
 export type AddedDep = { from: string; to: string; existing: boolean } // existing=기존 그래프에 연결
 export type SplitResult = { feature: string; created: number; issues: { title: string; assignee: string }[]; addedDeps: AddedDep[] }
+export type NewFeature = { title: string; week: number; lane: Lane; depIds: string[] }
 
 interface Store {
   tasks: Task[]
@@ -14,6 +15,7 @@ interface Store {
   me: string
   childrenOf: (featureId: string) => Task[]
   moveTask: (id: string, week: number) => void
+  addFeature: (input: NewFeature) => Task
   splitFeature: (featureId: string, items: SplitItem[]) => SplitResult | null
 }
 
@@ -24,10 +26,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>(seedTasks)
   const [members] = useState<Member[]>(seedMembers)
   const [prs] = useState<PullRequest[]>(seedPrs)
+  const [seq, setSeq] = useState(1)
 
   const childrenOf = (fId: string) => tasks.filter((t) => t.id.startsWith(`${fId}-i`))
 
   const moveTask = (id: string, week: number) => setTasks((ts) => ts.map((t) => (t.id === id ? { ...t, week } : t)))
+
+  // 새 기능 추가 — 담당 미정(기능엔 사람 X), 예정 상태. 이후 이슈로 나뉨.
+  const addFeature = ({ title, week, lane, depIds }: NewFeature): Task => {
+    const id = `f-${seq}`
+    setSeq((s) => s + 1)
+    const row = Math.max(2, 0, ...tasks.filter((t) => t.week === week).map((t) => t.row)) + 1
+    const t: Task = { id, title: title.trim(), assigneeId: '', status: 'planned', lane, week, row, deps: depIds }
+    setTasks((ts) => [...ts, t])
+    return t
+  }
 
   // 기능 → 이슈 분리. 루트 이슈는 기능의 기존 선행을 물려받아 그래프에 연결됨.
   const splitFeature = (fId: string, items: SplitItem[]): SplitResult | null => {
@@ -48,5 +61,5 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { feature: f.title, created: newTasks.length, issues: newTasks.map((t) => ({ title: t.title, assignee: members.find((m) => m.id === t.assigneeId)?.name ?? '미정' })), addedDeps }
   }
 
-  return <Ctx.Provider value={{ tasks, members, prs, me: ME, childrenOf, moveTask, splitFeature }}>{children}</Ctx.Provider>
+  return <Ctx.Provider value={{ tasks, members, prs, me: ME, childrenOf, moveTask, addFeature, splitFeature }}>{children}</Ctx.Provider>
 }

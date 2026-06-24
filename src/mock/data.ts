@@ -1,4 +1,4 @@
-import type { Member, Task, PullRequest, Project } from '../types'
+import type { Member, Task, PullRequest, Project, Lane } from '../types'
 
 export const ME = 'km'
 
@@ -73,6 +73,51 @@ export const genericSuggest: AISuggest = {
     { title: '입력 검증 및 에러 처리', importance: 'medium', days: 1, deps: [0] },
     { title: '단위 테스트 작성', importance: 'low', days: 1, deps: [0] },
   ],
+}
+
+// 새 기능 추가 시, 분류(lane)에 맞춘 수직 슬라이스 분해 (happy path 먼저 → 검증·테스트는 이후)
+const LANE_SLICE: Record<Lane, { note: string; issues: Suggestion[] }> = {
+  FE: {
+    note: '화면(happy path)을 먼저, API 연동·에러 UI·반응형을 그 이후로 의존성을 잡았습니다 (수직 슬라이스 · SPIDR).',
+    issues: [
+      { title: '화면·컴포넌트 구현 (happy path)', importance: 'high', days: 2 },
+      { title: 'API 연동 및 상태 처리', importance: 'high', days: 1, deps: [0] },
+      { title: '로딩·에러 상태 UI', importance: 'medium', days: 1, deps: [1] },
+      { title: '반응형·접근성 점검', importance: 'low', days: 1, deps: [0] },
+    ],
+  },
+  BE: {
+    note: '핵심 API(happy path)를 먼저, 검증·저장·테스트를 그 이후로 의존성을 잡았습니다 (수직 슬라이스 · SPIDR).',
+    issues: [
+      { title: '핵심 API 구현 (happy path)', importance: 'high', days: 2 },
+      { title: '입력 검증 및 예외 처리', importance: 'medium', days: 1, deps: [0] },
+      { title: '데이터 저장·조회 연동', importance: 'medium', days: 1, deps: [0] },
+      { title: '단위 테스트 작성', importance: 'low', days: 1, deps: [0, 1] },
+    ],
+  },
+  AI: {
+    note: '데이터·추론 연동을 먼저, 결과 검증·튜닝을 그 이후로 의존성을 잡았습니다 (수직 슬라이스 · SPIDR).',
+    issues: [
+      { title: '데이터 전처리·입력 정의', importance: 'high', days: 1 },
+      { title: '모델 호출·추론 연동', importance: 'high', days: 2, deps: [0] },
+      { title: '결과 후처리·검증', importance: 'medium', days: 1, deps: [1] },
+      { title: '프롬프트·파라미터 튜닝', importance: 'low', days: 1, deps: [1] },
+    ],
+  },
+  INFRA: {
+    note: '리소스 구성을 먼저, 파이프라인·모니터링·장애 대응을 그 이후로 의존성을 잡았습니다.',
+    issues: [
+      { title: '리소스 프로비저닝', importance: 'high', days: 1 },
+      { title: '배포 파이프라인 구성', importance: 'high', days: 2, deps: [0] },
+      { title: '모니터링·로깅 설정', importance: 'medium', days: 1, deps: [0] },
+      { title: '롤백·장애 대응 절차', importance: 'low', days: 1, deps: [1] },
+    ],
+  },
+}
+
+export function suggestForFeature(title: string, lane: Lane): AISuggest {
+  const s = LANE_SLICE[lane] ?? { note: genericSuggest.note, issues: genericSuggest.issues }
+  return { note: `'${title}'은(는) ${s.note}`, total: s.issues.reduce((a, i) => a + i.days, 0), issues: s.issues }
 }
 
 // 주차 회고 + 리스케줄 추천
