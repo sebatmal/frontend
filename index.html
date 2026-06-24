@@ -5,6 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/frontend/logo.png" />
     <title>DevFlow</title>
+    <script>
+      // 404.html에서 인코딩된 경로를 복원해 BrowserRouter가 올바른 경로를 인식하도록 함
+      (function() {
+        var redirect = sessionStorage.getItem('redirect');
+        sessionStorage.removeItem('redirect');
+        if (redirect && redirect !== location.href) {
+          history.replaceState(null, null, redirect);
+        }
+        // 쿼리스트링 방식 복원
+        var search = window.location.search;
+        if (search) {
+          var params = new URLSearchParams(search);
+          var p = params.get('p');
+          var q = params.get('q');
+          if (p) {
+            var base = window.location.pathname.split('/').slice(0, 2).join('/');
+            var url = base + p + (q ? '?' + q.replace(/~and~/g, '&') : '');
+            history.replaceState(null, null, url);
+          }
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

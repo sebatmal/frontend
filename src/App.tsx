@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { StoreProvider } from './store'
 import Login from './pages/Login'
+import CallbackPage from './pages/CallbackPage'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
 import GraphPage from './pages/GraphPage'
@@ -11,11 +13,8 @@ import SchedulePage from './pages/SchedulePage'
 const TABS = { schedule: '스케줄', graph: '의존성 흐름', mywork: '내 작업', team: '팀 대시보드' } as const
 type TabKey = keyof typeof TABS
 
-export default function App() {
-  const [user, setUser] = useState<string | null>(null)
+function MainApp() {
   const [tab, setTab] = useState<TabKey>('schedule')
-
-  if (!user) return <Login onLogin={() => setUser('km')} />
 
   return (
     <StoreProvider>
@@ -32,5 +31,20 @@ export default function App() {
         </div>
       </div>
     </StoreProvider>
+  )
+}
+
+function PrivateRoute({ children }: { children: React.ReactNode }) {
+  const token = localStorage.getItem('token')
+  return token ? <>{children}</> : <Navigate to="/login" replace />
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/callback" element={<CallbackPage />} />
+      <Route path="/*" element={<PrivateRoute><MainApp /></PrivateRoute>} />
+    </Routes>
   )
 }
