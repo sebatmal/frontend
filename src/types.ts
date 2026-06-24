@@ -14,6 +14,8 @@ export interface ApiProject {
   githubRepo: string
   sprintLabel: string | null
   dDay: number | null
+  connectedAt: string | null   // org 최초 연결일 (BE)
+  currentWeek: number          // 현재 주차 0-based (BE, 연결일 기준)
 }
 
 export interface ApiMember {

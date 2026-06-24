@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { api } from '../mock/api'
 import { useStore, type SplitResult } from '../store'
 import type { Task, Lane } from '../types'
@@ -16,7 +16,7 @@ const IMP: Record<Importance, { label: string; cls: string }> = {
 type EditIssue = { id: string; title: string; importance: Importance; days: number; depIds: string[]; assignee: string }
 type NewFeat = { title: string; week: number; lane: Lane; depIds: string[] }
 
-export default function SchedulePage() {
+export default function SchedulePage({ currentWeek = 0 }: { currentWeek?: number }) {
   const { tasks, members, moveTask, addFeature, splitFeature, childrenOf } = useStore()
   const [drag, setDrag] = useState<string | null>(null)
   const [openFor, setOpenFor] = useState<Task | null>(null)
@@ -25,7 +25,8 @@ export default function SchedulePage() {
   const [newTitle, setNewTitle] = useState('')
   const [retroOpen, setRetroOpen] = useState(false)
   const [toast, setToast] = useState('')
-  const [confirmed, setConfirmed] = useState(1)   // 이 주차 미만은 확정·잠김. 그 외엔 자유 이동
+  const [confirmed, setConfirmed] = useState(currentWeek)   // 현재 주차(BE, org 연결일 기준). 미만은 확정·잠김.
+  useEffect(() => { setConfirmed(currentWeek) }, [currentWeek])   // 프로젝트 로드되면 동기화
   const [summary, setSummary] = useState<SplitResult | null>(null)
   const [addFeat, setAddFeat] = useState<NewFeat | null>(null)   // 기능 추가 모달
 

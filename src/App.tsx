@@ -79,7 +79,7 @@ function MainApp() {
             {tab === 'graph' && <GraphPage />}
             {tab === 'mywork' && <MyWorkPage />}
             {tab === 'team' && <TeamPage />}
-            {tab === 'schedule' && <SchedulePage />}
+            {tab === 'schedule' && <SchedulePage currentWeek={project?.currentWeek ?? 0} />}
           </div>
         </div>
       </div>
