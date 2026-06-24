@@ -1,10 +1,10 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
-import type { Task, Member, PullRequest, Lane } from './types'
-import { tasks as seedTasks, members as seedMembers, prs as seedPrs, ME } from './mock/data'
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
+import type { Task, Member, PullRequest, Lane, ApiTask, ApiMember } from './types'
+import { prs as seedPrs } from './mock/data'
+import { apiFetch } from './api'
 
-// 중앙 상태(목 서버). 새로고침 전까지 유지 · 모든 화면이 동기화됨.
 export type SplitItem = { id: string; title: string; assignee: string; depIds: string[] }
-export type AddedDep = { from: string; to: string; existing: boolean } // existing=기존 그래프에 연결
+export type AddedDep = { from: string; to: string; existing: boolean }
 export type SplitResult = { feature: string; created: number; issues: { title: string; assignee: string }[]; addedDeps: AddedDep[] }
 export type NewFeature = { title: string; week: number; lane: Lane; depIds: string[] }
 
@@ -15,51 +15,115 @@ interface Store {
   me: string
   childrenOf: (featureId: string) => Task[]
   moveTask: (id: string, week: number) => void
-  addFeature: (input: NewFeature) => Task
+  addFeature: (input: NewFeature) => Promise<Task>
   splitFeature: (featureId: string, items: SplitItem[]) => SplitResult | null
+}
+
+const STATUS_MAP: Record<string, Task['status']> = {
+  PLANNED: 'planned', INPROGRESS: 'inprogress', REVIEW: 'review',
+  BLOCKED: 'blocked', MERGED: 'merged', OPEN: 'open',
+}
+
+function toTask(t: ApiTask): Task {
+  return {
+    id: String(t.id),
+    title: t.title,
+    type: t.type,
+    parentId: t.parentId != null ? String(t.parentId) : undefined,
+    assigneeId: t.assigneeMemberId != null ? String(t.assigneeMemberId) : '',
+    status: STATUS_MAP[t.status] ?? 'planned',
+    lane: t.lane,
+    week: t.week,
+    row: t.row,
+    deps: t.deps.map(String),
+    split: t.isSplit,
+    prNumber: t.githubIssueNumber ?? undefined,
+  }
+}
+
+function toMember(m: ApiMember): Member {
+  return {
+    id: String(m.id),
+    name: m.name,
+    initials: m.name.slice(0, 2),
+    role: m.role ?? '',
+    color: m.color,
+  }
 }
 
 const Ctx = createContext<Store | null>(null)
 export const useStore = () => { const c = useContext(Ctx); if (!c) throw new Error('StoreProvider 필요'); return c }
 
-export function StoreProvider({ children }: { children: ReactNode }) {
-  const [tasks, setTasks] = useState<Task[]>(seedTasks)
-  const [members] = useState<Member[]>(seedMembers)
-  const [prs] = useState<PullRequest[]>(seedPrs)
+interface ProviderProps {
+  children: ReactNode
+  projectId: string | null
+  apiMembers: ApiMember[]
+  userId: number | null
+}
+
+export function StoreProvider({ children, projectId, apiMembers, userId }: ProviderProps) {
+  const [tasks, setTasks] = useState<Task[]>([])
   const [seq, setSeq] = useState(1)
 
-  const childrenOf = (fId: string) => tasks.filter((t) => t.id.startsWith(`${fId}-i`))
+  const members: Member[] = apiMembers.length > 0
+    ? apiMembers.map(toMember)
+    : []
 
-  const moveTask = (id: string, week: number) => setTasks((ts) => ts.map((t) => (t.id === id ? { ...t, week } : t)))
+  const me = apiMembers.find(m => m.userId === userId)
+  const meId = me ? String(me.id) : ''
 
-  // 새 기능 추가 — 담당 미정(기능엔 사람 X), 예정 상태. 이후 이슈로 나뉨.
-  const addFeature = ({ title, week, lane, depIds }: NewFeature): Task => {
-    const id = `f-${seq}`
-    setSeq((s) => s + 1)
-    const row = Math.max(2, 0, ...tasks.filter((t) => t.week === week).map((t) => t.row)) + 1
-    const t: Task = { id, title: title.trim(), assigneeId: '', status: 'planned', lane, week, row, deps: depIds }
-    setTasks((ts) => [...ts, t])
+  const [prs] = useState<PullRequest[]>(seedPrs)
+
+  useEffect(() => {
+    if (!projectId) return
+    apiFetch<ApiTask[]>(`/projects/${projectId}/tasks`)
+      .then(data => setTasks(data.map(toTask)))
+      .catch(() => {})
+  }, [projectId])
+
+  const childrenOf = (fId: string) => tasks.filter(t => t.parentId === fId)
+
+  const moveTask = (id: string, week: number) => {
+    setTasks(ts => ts.map(t => t.id === id ? { ...t, week } : t))
+    apiFetch(`/tasks/${id}`, { method: 'PATCH', body: JSON.stringify({ week }) }).catch(() => {})
+  }
+
+  const addFeature = async ({ title, week, lane, depIds }: NewFeature): Promise<Task> => {
+    const api = await apiFetch<ApiTask>(`/projects/${projectId}/features`, {
+      method: 'POST',
+      body: JSON.stringify({ title: title.trim(), week, lane, depTaskIds: depIds.map(Number) }),
+    })
+    const t = toTask(api)
+    setTasks(ts => [...ts, t])
     return t
   }
 
-  // 기능 → 이슈 분리. 루트 이슈는 기능의 기존 선행을 물려받아 그래프에 연결됨.
   const splitFeature = (fId: string, items: SplitItem[]): SplitResult | null => {
-    const f = tasks.find((t) => t.id === fId)
+    const f = tasks.find(t => t.id === fId)
     if (!f || items.length === 0) return null
-    if (tasks.some((t) => t.id.startsWith(`${fId}-i`))) return null // 이미 생성 → 중복 방지
+    if (f.split) return null
     const idMap: Record<string, string> = {}
     items.forEach((it, i) => (idMap[it.id] = `${fId}-i${i}`))
-    const baseRow = Math.max(2, ...tasks.filter((t) => t.week === f.week).map((t) => t.row)) + 1
+    const baseRow = Math.max(2, ...tasks.filter(t => t.week === f.week).map(t => t.row)) + 1
     const newTasks: Task[] = items.map((it, i) => ({
-      id: idMap[it.id], title: it.title, assigneeId: it.assignee, status: 'planned', lane: f.lane, week: f.week, row: baseRow + i,
-      deps: it.depIds.length ? it.depIds.map((d) => idMap[d]) : f.deps.length ? f.deps : [fId],
+      id: idMap[it.id], title: it.title, assigneeId: it.assignee,
+      status: 'planned', lane: f.lane, week: f.week, row: baseRow + i,
+      parentId: fId,
+      deps: it.depIds.length ? it.depIds.map(d => idMap[d]) : f.deps.length ? f.deps : [fId],
     }))
-    const titleAll: Record<string, string> = { ...Object.fromEntries(tasks.map((t) => [t.id, t.title])), ...Object.fromEntries(newTasks.map((t) => [t.id, t.title])) }
-    const existing = new Set(tasks.map((t) => t.id))
-    const addedDeps: AddedDep[] = newTasks.flatMap((t) => t.deps.map((d) => ({ from: titleAll[d] ?? d, to: t.title, existing: existing.has(d) })))
-    setTasks((ts) => ts.map((t) => (t.id === fId ? { ...t, split: true } : t)).concat(newTasks))
-    return { feature: f.title, created: newTasks.length, issues: newTasks.map((t) => ({ title: t.title, assignee: members.find((m) => m.id === t.assigneeId)?.name ?? '미정' })), addedDeps }
+    const titleAll: Record<string, string> = {
+      ...Object.fromEntries(tasks.map(t => [t.id, t.title])),
+      ...Object.fromEntries(newTasks.map(t => [t.id, t.title])),
+    }
+    const existing = new Set(tasks.map(t => t.id))
+    const addedDeps: AddedDep[] = newTasks.flatMap(t => t.deps.map(d => ({ from: titleAll[d] ?? d, to: t.title, existing: existing.has(d) })))
+    setTasks(ts => ts.map(t => t.id === fId ? { ...t, split: true } : t).concat(newTasks))
+    return { feature: f.title, created: newTasks.length, issues: newTasks.map(t => ({ title: t.title, assignee: members.find(m => m.id === t.assigneeId)?.name ?? '미정' })), addedDeps }
   }
 
-  return <Ctx.Provider value={{ tasks, members, prs, me: ME, childrenOf, moveTask, addFeature, splitFeature }}>{children}</Ctx.Provider>
+  return (
+    <Ctx.Provider value={{ tasks, members, prs, me: meId, childrenOf, moveTask, addFeature, splitFeature }}>
+      {children}
+    </Ctx.Provider>
+  )
 }

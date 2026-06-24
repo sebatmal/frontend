@@ -41,6 +41,8 @@ export interface Member {
 export interface Task {
   id: string
   title: string
+  type?: 'FEATURE' | 'ISSUE'
+  parentId?: string
   prNumber?: number
   assigneeId: string
   status: TaskStatus
@@ -49,6 +51,21 @@ export interface Task {
   row: number            // 그래프 세로 위치
   deps: string[]         // 이 작업이 "기다리는"(선행) Task id 목록
   split?: boolean        // 기능이 이슈로 나뉘었는지
+}
+
+export interface ApiTask {
+  id: number
+  title: string
+  type: 'FEATURE' | 'ISSUE'
+  parentId: number | null
+  status: 'PLANNED' | 'INPROGRESS' | 'REVIEW' | 'BLOCKED' | 'MERGED' | 'OPEN'
+  lane: Lane
+  week: number
+  row: number
+  assigneeMemberId: number | null
+  githubIssueNumber: number | null
+  isSplit: boolean
+  deps: number[]
 }
 
 export interface PullRequest {

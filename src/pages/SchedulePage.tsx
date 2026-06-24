@@ -18,7 +18,6 @@ type NewFeat = { title: string; week: number; lane: Lane; depIds: string[] }
 
 export default function SchedulePage() {
   const { tasks, members, moveTask, addFeature, splitFeature, childrenOf } = useStore()
-  const mm = Object.fromEntries(members.map((m) => [m.id, m]))
   const [drag, setDrag] = useState<string | null>(null)
   const [openFor, setOpenFor] = useState<Task | null>(null)
   const [sug, setSug] = useState<AISuggest | null>(null)
@@ -59,10 +58,10 @@ export default function SchedulePage() {
     api.suggestIssues(t.id, { title: t.title, lane: t.lane }).then((s) => { setSug(s); setItems(s.issues.map((is, i) => ({ id: `s${i}`, title: is.title, importance: is.importance, days: is.days, depIds: (is.deps || []).map((d) => `s${d}`), assignee: '' }))) })
   }
   // 기능 추가 → 바로 이슈 추천 모달로 연결
-  const featureList = tasks.filter((t) => !t.id.includes('-i'))
-  const createFeature = () => {
+  const featureList = tasks.filter((t) => !t.parentId)
+  const createFeature = async () => {
     if (!addFeat || !addFeat.title.trim()) { flash('기능 이름을 입력해 주세요'); return }
-    const t = addFeature(addFeat)
+    const t = await addFeature(addFeat)
     setAddFeat(null)
     open(t)
   }

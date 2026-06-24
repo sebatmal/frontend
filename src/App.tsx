@@ -65,7 +65,7 @@ function MainApp() {
   }, [projectId])
 
   return (
-    <StoreProvider>
+    <StoreProvider projectId={projectId} apiMembers={members} userId={user?.id ?? null}>
       <div className="app">
         <Sidebar
           tab={tab} onTab={setTab}
