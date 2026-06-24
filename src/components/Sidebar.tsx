@@ -2,10 +2,10 @@ import { project, members, ME } from '../mock/data'
 import { IconGraph, IconUser, IconTeam, IconCal } from './icons'
 
 const NAV = [
+  { key: 'schedule', label: '스케줄', Icon: IconCal },
   { key: 'graph', label: '의존성 흐름', Icon: IconGraph },
   { key: 'mywork', label: '내 작업', Icon: IconUser, badge: 2 },
-  { key: 'team', label: '팀', Icon: IconTeam },
-  { key: 'schedule', label: '스케줄', Icon: IconCal },
+  { key: 'team', label: '팀 대시보드', Icon: IconTeam },
 ] as const
 
 export default function Sidebar({ tab, onTab }: { tab: string; onTab: (k: any) => void }) {
