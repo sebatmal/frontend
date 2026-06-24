@@ -70,6 +70,35 @@ export interface ApiTask {
   deps: number[]
 }
 
+export interface ApiPullRequest {
+  id: number
+  number: number
+  title: string
+  authorMemberId: number | null
+  reviewerMemberId: number | null
+  review: 'WAIT' | 'CHANGES' | 'APPROVED' | 'MERGED'
+  ageDays: number
+  approvals: number
+  reviewers: number
+  comments: number
+  url: string
+  linkedTaskId: number | null
+}
+
+export interface ApiDependency {
+  id: number
+  fromTaskId: number
+  toTaskId: number
+  githubLinked: boolean
+}
+
+export interface ApiCreateIssuesResponse {
+  featureId: number
+  created: number
+  issues: ApiTask[]
+  addedDeps: ApiDependency[]
+}
+
 export interface PullRequest {
   number: number
   title: string

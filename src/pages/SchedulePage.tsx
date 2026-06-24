@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { api } from '../mock/api'
+import { apiFetch } from '../api'
 import { useStore, type SplitResult } from '../store'
 import type { Task, Lane } from '../types'
 import type { AISuggest, Importance } from '../mock/data'
@@ -28,6 +28,7 @@ export default function SchedulePage({ currentWeek = 0 }: { currentWeek?: number
   const [confirmed, setConfirmed] = useState(currentWeek)   // 현재 주차(BE, org 연결일 기준). 미만은 확정·잠김.
   useEffect(() => { setConfirmed(currentWeek) }, [currentWeek])   // 프로젝트 로드되면 동기화
   const [summary, setSummary] = useState<SplitResult | null>(null)
+  const [splitting, setSplitting] = useState(false)   // 이슈 생성 중복 클릭 방지
   const [addFeat, setAddFeat] = useState<NewFeat | null>(null)   // 기능 추가 모달
 
   const byId = Object.fromEntries(tasks.map((t) => [t.id, t]))
@@ -56,7 +57,10 @@ export default function SchedulePage({ currentWeek = 0 }: { currentWeek?: number
   }
   const open = (t: Task) => {
     setOpenFor(t); setSug(null); setItems([]); setNewTitle('')
-    api.suggestIssues(t.id, { title: t.title, lane: t.lane }).then((s) => { setSug(s); setItems(s.issues.map((is, i) => ({ id: `s${i}`, title: is.title, importance: is.importance, days: is.days, depIds: (is.deps || []).map((d) => `s${d}`), assignee: '' }))) })
+    const apply = (s: AISuggest) => { setSug(s); setItems(s.issues.map((is, i) => ({ id: `s${i}`, title: is.title, importance: is.importance, days: is.days, depIds: (is.deps || []).map((d) => `s${d}`), assignee: '' }))) }
+    apiFetch<AISuggest>(`/features/${t.id}/suggest-issues`, { method: 'POST' })
+      .then(apply)
+      .catch(() => apply({ note: 'AI 추천을 불러오지 못했어요. 직접 이슈를 추가해 분리할 수 있어요.', total: 0, issues: [] }))
   }
   // 기능 추가 → 바로 이슈 추천 모달로 연결
   const featureList = tasks.filter((t) => !t.parentId)
@@ -284,7 +288,7 @@ export default function SchedulePage({ currentWeek = 0 }: { currentWeek?: number
                   <button onClick={recompute} style={btnG} title="이슈가 바뀌면 의존성만 다시 계산">의존성 재계산</button>
                 </div>
                 <div className="t-caption" style={{ margin: '14px 0 8px' }}>이슈 {items.length}개 · 의존성 {depCount}개 · 담당 미정 {unassigned}개</div>
-                <button onClick={() => { const r = splitFeature(openFor.id, items.map((it) => ({ id: it.id, title: it.title, assignee: it.assignee, depIds: it.depIds }))); setOpenFor(null); if (r) setSummary(r); else flash('이미 생성된 기능이에요') }} style={{ ...btnP, width: '100%', justifyContent: 'center' }}>⎇ GitHub에 {items.length}개 이슈 + 의존성 생성</button>
+                <button disabled={splitting} onClick={async () => { if (splitting) return; setSplitting(true); const target = openFor; try { const r = await splitFeature(target.id, items.map((it) => ({ id: it.id, title: it.title, assignee: it.assignee, depIds: it.depIds }))); setOpenFor(null); if (r) setSummary(r); else flash('이미 생성된 기능이에요') } catch { flash('이슈 생성에 실패했어요. 잠시 후 다시 시도해 주세요') } finally { setSplitting(false) } }} style={{ ...btnP, width: '100%', justifyContent: 'center', opacity: splitting ? 0.6 : 1 }}>{splitting ? '생성 중…' : `⎇ GitHub에 ${items.length}개 이슈 + 의존성 생성`}</button>
               </>
             )}
           </div>

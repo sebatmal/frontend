@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
-import type { Task, Member, PullRequest, Lane, ApiTask, ApiMember } from './types'
-import { prs as seedPrs } from './mock/data'
+import type { Task, Member, PullRequest, PRReview, Lane, ApiTask, ApiMember, ApiPullRequest, ApiCreateIssuesResponse } from './types'
 import { apiFetch } from './api'
 
 export type SplitItem = { id: string; title: string; assignee: string; depIds: string[] }
@@ -16,12 +15,32 @@ interface Store {
   childrenOf: (featureId: string) => Task[]
   moveTask: (id: string, week: number) => void
   addFeature: (input: NewFeature) => Promise<Task>
-  splitFeature: (featureId: string, items: SplitItem[]) => SplitResult | null
+  splitFeature: (featureId: string, items: SplitItem[]) => Promise<SplitResult | null>
 }
 
 const STATUS_MAP: Record<string, Task['status']> = {
   PLANNED: 'planned', INPROGRESS: 'inprogress', REVIEW: 'review',
   BLOCKED: 'blocked', MERGED: 'merged', OPEN: 'open',
+}
+
+const PR_REVIEW_MAP: Record<string, PRReview> = {
+  WAIT: 'wait', CHANGES: 'changes', APPROVED: 'approved', MERGED: 'merged',
+}
+
+function toPullRequest(p: ApiPullRequest): PullRequest {
+  return {
+    number: p.number,
+    title: p.title,
+    authorId: p.authorMemberId != null ? String(p.authorMemberId) : '',
+    reviewerId: p.reviewerMemberId != null ? String(p.reviewerMemberId) : undefined,
+    review: PR_REVIEW_MAP[p.review] ?? 'wait',
+    ageDays: p.ageDays,
+    approvals: p.approvals,
+    reviewers: p.reviewers,
+    comments: p.comments,
+    url: p.url,
+    linkedIssueId: p.linkedTaskId != null ? String(p.linkedTaskId) : undefined,
+  }
 }
 
 function toTask(t: ApiTask): Task {
@@ -72,12 +91,15 @@ export function StoreProvider({ children, projectId, apiMembers, userId }: Provi
   const me = apiMembers.find(m => m.userId === userId)
   const meId = me ? String(me.id) : ''
 
-  const [prs] = useState<PullRequest[]>(seedPrs)
+  const [prs, setPrs] = useState<PullRequest[]>([])
 
   useEffect(() => {
     if (!projectId) return
     apiFetch<ApiTask[]>(`/projects/${projectId}/tasks`)
       .then(data => setTasks(data.map(toTask)))
+      .catch(() => {})
+    apiFetch<ApiPullRequest[]>(`/projects/${projectId}/prs`)
+      .then(data => setPrs(data.map(toPullRequest)))
       .catch(() => {})
   }, [projectId])
 
@@ -98,27 +120,50 @@ export function StoreProvider({ children, projectId, apiMembers, userId }: Provi
     return t
   }
 
-  const splitFeature = (fId: string, items: SplitItem[]): SplitResult | null => {
+  // 이슈 분리: 서버가 GitHub 이슈 + 의존성을 실제 생성하고, 결과로 보드를 갱신한다.
+  const splitFeature = async (fId: string, items: SplitItem[]): Promise<SplitResult | null> => {
     const f = tasks.find(t => t.id === fId)
     if (!f || items.length === 0) return null
     if (f.split) return null
-    const idMap: Record<string, string> = {}
-    items.forEach((it, i) => (idMap[it.id] = `${fId}-i${i}`))
-    const baseRow = Math.max(2, ...tasks.filter(t => t.week === f.week).map(t => t.row)) + 1
-    const newTasks: Task[] = items.map((it, i) => ({
-      id: idMap[it.id], title: it.title, assigneeId: it.assignee,
-      status: 'planned', lane: f.lane, week: f.week, row: baseRow + i,
-      parentId: fId,
-      deps: it.depIds.length ? it.depIds.map(d => idMap[d]) : f.deps.length ? f.deps : [fId],
-    }))
-    const titleAll: Record<string, string> = {
-      ...Object.fromEntries(tasks.map(t => [t.id, t.title])),
-      ...Object.fromEntries(newTasks.map(t => [t.id, t.title])),
+
+    const idx: Record<string, number> = {}
+    items.forEach((it, i) => (idx[it.id] = i))
+
+    const payload = {
+      items: items.map(it => ({
+        title: it.title,
+        assigneeMemberId: it.assignee ? Number(it.assignee) : null,
+        // 같은 요청 내 선행 이슈의 index (0-based)
+        depItemIndexes: it.depIds.map(d => idx[d]).filter(i => i != null),
+      })),
     }
-    const existing = new Set(tasks.map(t => t.id))
-    const addedDeps: AddedDep[] = newTasks.flatMap(t => t.deps.map(d => ({ from: titleAll[d] ?? d, to: t.title, existing: existing.has(d) })))
-    setTasks(ts => ts.map(t => t.id === fId ? { ...t, split: true } : t).concat(newTasks))
-    return { feature: f.title, created: newTasks.length, issues: newTasks.map(t => ({ title: t.title, assignee: members.find(m => m.id === t.assigneeId)?.name ?? '미정' })), addedDeps }
+
+    const res = await apiFetch<ApiCreateIssuesResponse>(`/features/${fId}/issues`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+
+    const created = res.issues.map(toTask)
+    setTasks(ts => ts.map(t => t.id === fId ? { ...t, split: true } : t).concat(created))
+
+    const newIds = new Set(created.map(t => t.id))
+    const titleOf: Record<string, string> = {
+      ...Object.fromEntries(tasks.map(t => [t.id, t.title])),
+      ...Object.fromEntries(created.map(t => [t.id, t.title])),
+    }
+    const nameOf = (mid: string) => members.find(m => m.id === mid)?.name ?? '미정'
+    const addedDeps: AddedDep[] = res.addedDeps.map(d => {
+      const from = String(d.fromTaskId)
+      const to = String(d.toTaskId)
+      return { from: titleOf[from] ?? from, to: titleOf[to] ?? to, existing: !newIds.has(from) }
+    })
+
+    return {
+      feature: f.title,
+      created: res.created,
+      issues: created.map(t => ({ title: t.title, assignee: nameOf(t.assigneeId) })),
+      addedDeps,
+    }
   }
 
   return (
