@@ -85,7 +85,16 @@ export default function SchedulePage() {
   const depCount = items.reduce((a, x) => a + x.depIds.length, 0)
   const unassigned = items.filter((x) => !x.assignee).length
   const titleOf = (id: string) => items.find((x) => x.id === id)?.title
-  const weekDone = (w: number) => { const l = tasks.filter((t) => t.week === w); const d = l.filter((t) => t.status === 'merged').length; return l.length ? Math.round((d / l.length) * 100) : 0 }
+  const weekDone = (w: number) => {
+    if (w < confirmed) return 100
+    const l = featureList.filter((t) => t.week === w)
+    if (!l.length) return 0
+    const score = l.reduce((a, t) => a + (t.status === 'merged' ? 1 : t.status === 'review' || t.status === 'inprogress' ? 0.5 : 0), 0)
+    return Math.round((score / l.length) * 100)
+  }
+  const totalFeatures = featureList.length
+  const doneFeatures = featureList.filter((t) => t.status === 'merged').length
+  const activeFeatures = featureList.filter((t) => t.status === 'inprogress' || t.status === 'review').length
 
   const dragT = drag ? byId[drag] : null
   const dependents = dragT ? dependentsOf(dragT.id) : []
@@ -107,7 +116,7 @@ export default function SchedulePage() {
       <div className="card" style={{ marginBottom: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
           <span className="t-caption" style={{ letterSpacing: '.06em' }}>SPRINT OVERVIEW</span>
-          <span className="t-caption">13개 기능 중 <b style={{ color: 'var(--success)' }}>3개 완료</b> · <b style={{ color: 'var(--info)' }}>3개 진행중</b></span>
+          <span className="t-caption">{totalFeatures}개 기능 중 <b style={{ color: 'var(--success)' }}>{doneFeatures}개 완료</b> · <b style={{ color: 'var(--info)' }}>{activeFeatures}개 진행중</b></span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {WEEKS.map((w, i) => (
