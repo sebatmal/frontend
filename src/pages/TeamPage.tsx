@@ -15,29 +15,72 @@ export default function TeamPage() {
   const [selM, setSelM] = useState<Member | null>(null)
   const [selP, setSelP] = useState<PullRequest | null>(null)
   const mm = Object.fromEntries(members.map((m) => [m.id, m]))
-  const issuesOf = (id: string) => tasks.filter((t) => t.assigneeId === id && ['inprogress', 'review', 'blocked'].includes(t.status)).length
+  const isDone = (s: string) => s === 'merged'
+  const isActive = (s: string) => ['inprogress', 'review', 'blocked'].includes(s)
+  const issuesOf = (id: string) => tasks.filter((t) => t.assigneeId === id && isActive(t.status)).length
   const prsOf = (id: string) => prs.filter((p) => p.authorId === id && p.review !== 'merged').length
+
+  const total = tasks.length
+  const done = tasks.filter((t) => isDone(t.status)).length
+  const progress = total ? Math.round((done / total) * 100) : 0
+  const activeCnt = tasks.filter((t) => isActive(t.status)).length
+  const openPRs = prs.filter((p) => p.review !== 'merged').length
+
+  const pointsOf = (id: string) =>
+    tasks.filter((t) => t.assigneeId === id).reduce((a, t) => a + (isDone(t.status) ? 2 : isActive(t.status) ? 1 : 0), 0) +
+    prs.filter((p) => p.authorId === id).length
+  const totalPts = members.reduce((a, m) => a + pointsOf(m.id), 0) || 1
+
+  const STATS = [
+    { label: '전체 진행률', value: `${progress}%`, sub: `${done}/${total} 완료` },
+    { label: '완료 이슈', value: done, sub: '머지됨' },
+    { label: '진행중', value: activeCnt, sub: '이슈' },
+    { label: '대기 PR', value: openPRs, sub: '리뷰·머지 대기' },
+  ] as const
 
   return (
     <div>
-      <div className="page-head"><h1 className="t-title1">팀</h1><p>팀원을 누르면 그 사람 작업을, PR을 누르면 세부 진행을 봅니다.</p></div>
+      <div className="page-head"><h1 className="t-title1">팀 대시보드</h1><p>전체 진행률과 멤버별 기여도를 한눈에. 교수·조교도 여기서 정량으로 확인합니다.</p></div>
 
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="t-title3" style={{ marginBottom: 6 }}>팀원 현황</div>
-        {members.map((m) => (
-          <div key={m.id} onClick={() => setSelM(m)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--gray-100)', cursor: 'pointer' }}>
-            <span className="avatar" style={{ width: 32, height: 32, background: m.color }}>{m.initials}</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--gray-900)' }}>{m.name}</div>
-              <div className="t-caption">{m.role}</div>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <span className="badge b-progress">진행중 이슈 {issuesOf(m.id)}</span>
-              <span className="badge b-open">PR {prsOf(m.id)}</span>
-            </div>
-            <span style={{ color: 'var(--gray-300)' }}>›</span>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+        {STATS.map((s) => (
+          <div key={s.label} className="card" style={{ padding: 16 }}>
+            <div className="t-caption">{s.label}</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: s.label === '전체 진행률' ? 'var(--primary)' : 'var(--gray-900)', margin: '4px 0 2px' }}>{s.value}</div>
+            <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>{s.sub}</div>
           </div>
         ))}
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="t-title3" style={{ marginBottom: 4 }}>전체 진행률</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, height: 12, borderRadius: 6, background: 'var(--gray-100)', overflow: 'hidden' }}>
+            <div style={{ width: `${progress}%`, height: '100%', background: 'var(--primary)', borderRadius: 6 }} />
+          </div>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--gray-900)', width: 42, textAlign: 'right' }}>{progress}%</span>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="t-title3" style={{ marginBottom: 6 }}>멤버별 기여도 <span className="t-caption" style={{ fontWeight: 400 }}>· 완료 이슈·PR 기준</span></div>
+        {members.map((m) => {
+          const share = Math.round((pointsOf(m.id) / totalPts) * 100)
+          return (
+            <div key={m.id} onClick={() => setSelM(m)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--gray-100)', cursor: 'pointer' }}>
+              <span className="avatar" style={{ width: 32, height: 32, background: m.color }}>{m.initials}</span>
+              <div style={{ width: 130 }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--gray-900)' }}>{m.name}</div>
+                <div className="t-caption">진행중 {issuesOf(m.id)} · PR {prsOf(m.id)}</div>
+              </div>
+              <div style={{ flex: 1, height: 10, borderRadius: 5, background: 'var(--gray-100)', overflow: 'hidden' }}>
+                <div style={{ width: `${share}%`, height: '100%', background: m.color, borderRadius: 5 }} />
+              </div>
+              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--gray-800)', width: 40, textAlign: 'right' }}>{share}%</span>
+              <span style={{ color: 'var(--gray-300)' }}>›</span>
+            </div>
+          )
+        })}
       </div>
 
       <div className="card">
