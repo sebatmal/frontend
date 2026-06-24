@@ -1,5 +1,5 @@
-import { project, members, ME } from '../mock/data'
 import { IconGraph, IconUser, IconTeam, IconCal } from './icons'
+import type { ApiProject, ApiMember } from '../types'
 
 const NAV = [
   { key: 'schedule', label: '스케줄', Icon: IconCal },
@@ -8,7 +8,15 @@ const NAV = [
   { key: 'team', label: '팀 대시보드', Icon: IconTeam },
 ] as const
 
-export default function Sidebar({ tab, onTab }: { tab: string; onTab: (k: any) => void }) {
+interface Props {
+  tab: string
+  onTab: (k: any) => void
+  allProjects: ApiProject[]
+  members: ApiMember[]
+  userId: number | null
+}
+
+export default function Sidebar({ tab, onTab, allProjects, members, userId }: Props) {
   return (
     <aside className="sidebar">
       <div className="logo">
@@ -17,9 +25,14 @@ export default function Sidebar({ tab, onTab }: { tab: string; onTab: (k: any) =
       </div>
 
       <div className="side-sec">Project</div>
-      <div className="proj">
-        <b>{project.name}</b>
-        <div className="sp">● {project.sprint}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+        {allProjects.map(p => (
+          <div key={p.id} className="proj">
+            <b>{p.name}</b>
+            {p.sprintLabel && <div className="sp">● {p.sprintLabel}</div>}
+            {p.dDay != null && <div className="sp">D-{p.dDay}</div>}
+          </div>
+        ))}
       </div>
 
       <nav className="nav">
@@ -33,16 +46,22 @@ export default function Sidebar({ tab, onTab }: { tab: string; onTab: (k: any) =
 
       <div className="side-sec">Team</div>
       <div>
-        {members.map((m) => (
-          <div className="member" key={m.id}>
-            <span className="avatar" style={{ width: 28, height: 28, background: m.color }}>{m.initials}</span>
-            <div>
-              <div className="nm">{m.name}{m.id === ME ? ' (나)' : ''}</div>
-              <div className="role">{m.role}</div>
+        {members.map(m => {
+          const isMe = m.userId === userId
+          return (
+            <div className="member" key={m.id}>
+              {m.avatarUrl
+                ? <img src={m.avatarUrl} alt={m.name} style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0 }} />
+                : <span className="avatar" style={{ width: 28, height: 28, background: m.color }}>{m.name.slice(0, 2)}</span>
+              }
+              <div>
+                <div className="nm">{m.name}{isMe ? ' (나)' : ''}</div>
+                <div className="role">{m.role ?? ''}</div>
+              </div>
+              <span className="live" />
             </div>
-            <span className="live" />
-          </div>
-        ))}
+          )
+        })}
       </div>
     </aside>
   )

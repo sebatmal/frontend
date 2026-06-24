@@ -1,4 +1,31 @@
 // DevFlow 도메인 타입 — 목 API와 실제 API가 공유하는 계약
+export interface User {
+  id: number
+  githubId: number
+  login: string
+  name: string
+  avatarUrl: string
+}
+
+export interface ApiProject {
+  id: number
+  name: string
+  githubOwner: string
+  githubRepo: string
+  sprintLabel: string | null
+  dDay: number | null
+}
+
+export interface ApiMember {
+  id: number
+  githubLogin: string
+  name: string
+  avatarUrl: string
+  role: string | null
+  color: string
+  userId: number | null
+}
+
 export type TaskStatus = 'merged' | 'open' | 'review' | 'inprogress' | 'blocked' | 'planned'
 export type Lane = 'BE' | 'FE' | 'AI' | 'INFRA'
 export type PRReview = 'wait' | 'changes' | 'approved' | 'merged'

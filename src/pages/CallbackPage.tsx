@@ -22,7 +22,8 @@ export default function CallbackPage() {
       })
       .then(data => {
         localStorage.setItem('token', data.token)
-        navigate('/')
+        localStorage.setItem('user', JSON.stringify(data.user))
+        navigate('/connect')
       })
       .catch(() => navigate('/login'))
   }, [])
