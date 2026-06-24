@@ -12,7 +12,7 @@ export default function Sidebar({ tab, onTab }: { tab: string; onTab: (k: any) =
   return (
     <aside className="sidebar">
       <div className="logo">
-        <img src="/logo.png" alt="DevFlow" style={{ width: 32, height: 32, borderRadius: 8 }} />
+        <img src="/frontend/logo.png" alt="DevFlow" style={{ width: 32, height: 32, borderRadius: 8 }} />
         <div><b>DevFlow</b><br /><span>v0.1.0</span></div>
       </div>
 

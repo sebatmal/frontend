@@ -31,7 +31,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
       <div style={{ width: 380, textAlign: 'center', padding: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 8 }}>
-          <img src="/logo.png" alt="DevFlow" style={{ width: 40, height: 40, borderRadius: 10 }} />
+          <img src="/frontend/logo.png" alt="DevFlow" style={{ width: 40, height: 40, borderRadius: 10 }} />
           <b style={{ fontSize: 24, color: 'var(--gray-900)' }}>DevFlow</b>
         </div>
         <p style={{ color: 'var(--gray-500)', fontSize: 15, margin: '6px 0 24px', lineHeight: 1.5 }}>
