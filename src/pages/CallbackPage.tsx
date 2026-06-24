@@ -1,23 +1,30 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 export default function CallbackPage() {
   const navigate = useNavigate()
+  const called = useRef(false)
 
   useEffect(() => {
+    if (called.current) return
+    called.current = true
+
     const code = new URLSearchParams(window.location.search).get('code')
     if (!code) {
-      navigate('/')
+      navigate('/login')
       return
     }
 
     fetch(`${import.meta.env.VITE_API_URL}/auth/github/callback?code=${code}`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error('login failed')
+        return res.json()
+      })
       .then(data => {
         localStorage.setItem('token', data.token)
         navigate('/')
       })
-      .catch(() => navigate('/'))
+      .catch(() => navigate('/login'))
   }, [])
 
   return (
