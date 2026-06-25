@@ -6,6 +6,7 @@
 1차는 **목(mock) API** 기반 — `src/mock/api.ts` 함수 본문만 `fetch`로 교체하면 실제 백엔드와 연동됩니다. 상태는 중앙 스토어(`src/store.tsx`)에서 동기화됩니다.
 
 ## 실행
+
 ```bash
 npm install
 npm run dev        # http://localhost:5173 (사용 중이면 5174)
@@ -13,9 +14,11 @@ npm run build      # 타입체크 + 번들
 ```
 
 ## 스택
+
 React 18 + Vite + TypeScript + @xyflow/react
 
 ## 구조
+
 ```
 src/
  ├─ types.ts          # 도메인 타입(FE·BE 공유 계약)
@@ -26,3 +29,7 @@ src/
 ```
 
 자세한 파이프라인 정의는 [PIPELINE.md](./PIPELINE.md) 참고.
+ddd
+ddd
+ddd
+dddd
